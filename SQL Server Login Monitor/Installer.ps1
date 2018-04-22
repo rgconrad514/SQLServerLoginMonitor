@@ -1,4 +1,4 @@
-﻿."$PSScriptRoot\SQL Server Login Monitor\Functions.ps1"
+﻿."$PSScriptRoot\SQL Server Login Monitor\LoginMonitor.ps1"
 Add-Type -AssemblyName PresentationFramework
 
 #Run as elevated

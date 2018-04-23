@@ -112,9 +112,11 @@ function Log-FailedLogin
         [string]
         $IPAddress,
         [parameter(position = 3, Mandatory=$true)]
+        [AllowEmptyString()]
         [string]
         $UserID,
         [parameter(position = 4, Mandatory=$true)]
+        [AllowEmptyString()]
         [string]
         $Message
     )

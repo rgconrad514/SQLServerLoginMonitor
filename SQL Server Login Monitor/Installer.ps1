@@ -42,7 +42,7 @@ else
     Invoke-Sqlcmd -ServerInstance 'localhost' -InputFile  $PSScriptRoot\LoginMonitor.sql -Username $User -Password $Password
 }
 
-$msgBoxInput = [System.Windows.MessageBox]::Show('Do you want to whitelist the LAN network?','Whitelist LAN Network','YesNo','Information')
+$msgBoxInput = [System.Windows.MessageBox]::Show('Do you want to whitelist the LAN?','Whitelist LAN','YesNo','Information')
 
 if($msgBoxInput -eq "Yes")
 {
@@ -62,15 +62,8 @@ if($msgBoxInput -eq "Yes")
         $Command.Connection = $Connection
         $Command.CommandText = 'EXEC dbo.WhitelistIP  @IPAddress, @Mask'
 
-        $IPAddressParam = New-Object System.Data.SqlClient.SqlParameter
-        $IPAddressParam.ParameterName = '@IPAddress'
-        $IPAddressParam.Value = $IPAddress
-        $Command.Parameters.Add($IPAddressParam);
-
-        $SubnetParam = New-Object System.Data.SqlClient.SqlParameter
-        $SubnetParam.ParameterName = '@Mask'
-        $SubnetParam.Value = $SubnetMask
-        $Command.Parameters.Add($SubnetParam)
+        $Command.Parameters.AddWithValue('@IPAddress', $IPAddress);
+        $Command.Parameters.AddWithValue('@Mask', $SubnetMask)
 
         $Command.ExecuteNonQuery()
     }

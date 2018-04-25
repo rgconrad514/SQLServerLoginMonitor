@@ -1,7 +1,0 @@
-<LoginMonitor>
-  <Server>localhost</Server>
-  <Database>LoginMonitor</Database>
-  <TrustedConnection>true</TrustedConnection>
-  <User></User>
-  <Password></Password>
-</LoginMonitor>

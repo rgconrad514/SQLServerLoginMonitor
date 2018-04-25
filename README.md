@@ -1,4 +1,5 @@
 # SQL Server Login Monitor
+Brute force attack prevention for remotely accessible SQL Server databases using PowerShell and Windows Task Scheduler API.
 More details in this article: https://www.codeproject.com/Articles/1240243/SQL-Server-Brute-Force-Attack-Detection-Part
 
 ## Installation:
@@ -14,5 +15,5 @@ task.
 3. Run installer.bat, the script will self-elevate and prompt for admin credentials if needed. Another prompt will appear for the user account to run the scheduled
 tasks, set this to the current user and password.
 
-## License:
-  This code is licensed under CPOL (https://www.codeproject.com/info/cpol10.aspx), a copy is provided.
+## License
+This code is licensed under CPOL (https://www.codeproject.com/info/cpol10.aspx), a copy is provided.

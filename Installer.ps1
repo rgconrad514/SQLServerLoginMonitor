@@ -19,8 +19,10 @@ Set-NetFirewallProfile -Profile Domain,Public,Private -Enabled True
 #Remove any firewall rules from previous install
 Remove-NetFirewallRule -Group 'SQL Server Login Monitor'
 
-#Copy PS scripts to ProgramData
-Copy-Item -Path "$PSScriptRoot\SQL Server Login Monitor\" -Destination $env:ProgramData\ -Container -Recurse -Force
+#Create folder in ProgramData and copy files
+New-Item -ItemType directory -Path "$env:ProgramData\SQL Login Monitor" -Force
+Copy-Item -Path $PSScriptRoot\LoginMonitor.ps1 -Destination "$env:ProgramData\SQL Login Monitor\" -Force
+Copy-Item -Path $PSScriptRoot\config.xml -Destination "$env:ProgramData\SQL Login Monitor\" -Force
 
 #Get database credentials from config.xml file
 $config = "$env:ProgramData\SQL Server Login Monitor\config.xml"

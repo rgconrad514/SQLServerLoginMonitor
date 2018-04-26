@@ -33,13 +33,13 @@ $TrustedConnection = $xml.SelectSingleNode(“//TrustedConnection[1]”).FirstCh
 #Create database
 if($TrustedConnection -eq "true")
 {
-    Invoke-Sqlcmd -ServerInstance 'localhost' -InputFile  $PSScriptRoot\LoginMonitor.sql
+    Invoke-Sqlcmd -ServerInstance $Server -InputFile  $PSScriptRoot\LoginMonitor.sql
 }
 else
 {
     $User = $xml.SelectSingleNode("//User[1]").FirstChild.Value
     $Password = $xml.SelectSingleNode("//Password[1]").FirstChild.Value
-    Invoke-Sqlcmd -ServerInstance 'localhost' -InputFile  $PSScriptRoot\LoginMonitor.sql -Username $User -Password $Password
+    Invoke-Sqlcmd -ServerInstance $Server -InputFile  $PSScriptRoot\LoginMonitor.sql -Username $User -Password $Password
 }
 
 $msgBoxInput = [System.Windows.MessageBox]::Show('Do you want to whitelist the LAN?','Whitelist LAN','YesNo','Information')

@@ -55,7 +55,7 @@ CREATE TABLE Config
 (
 	ConfigID INT NOT NULL PRIMARY KEY,
 	ConfigDesc VARCHAR(255),
-	ConfigValue INT
+	ConfigValue INT NOT NULL
 );
 INSERT INTO Config(ConfigID, ConfigDesc, ConfigValue)
 VALUES(1, 'Time in minutes before counters are reset', 15),
@@ -237,6 +237,60 @@ END
 GO
 
 /*
+  Can be used to customize logic for determining failed login threshold.
+*/
+CREATE FUNCTION [dbo].[GetLoginThreshold] 
+(
+	@EventID int,
+	@IPAddress VARCHAR(100),
+	@UserID VARCHAR(128),
+	@Message VARCHAR(1000)
+)
+RETURNS INT
+AS
+BEGIN
+	DECLARE @FailedLoginThreshold INT;
+
+	SELECT @FailedLoginThreshold = ConfigValue
+	FROM Config
+	WHERE ConfigID = 2;
+  
+	-- Example custom logic
+	/*
+	SELECT @FailedLoginThreshold =
+	CASE
+	  WHEN @EventID IN (17828, 17832, 17836) THEN 1 -- Bad packets sent from client, often from port scanning software (but can be the result of server misconfiguration on older MSSQL versions)
+		WHEN @UserID IN (SELECT [name] FROM master.sys.sql_logins WHERE is_disabled = 1) THEN 1 -- Immediately block attempts with disabled users accounts
+		WHEN COALESCE(IS_SRVROLEMEMBER('sysadmin', @UserID), 0) = 1 THEN 1 -- If remote users are expected to not be sysadmins
+		ELSE @FailedLoginThreshold
+	END;
+	*/
+	RETURN @FailedLoginThreshold;
+END
+GO
+
+/*
+	Add any custom logic for setting counter reset date
+*/
+CREATE FUNCTION [dbo].[GetCounterResetDate]
+(
+	@IPAddress VARCHAR(100),
+	@LogDate DATETIME
+)
+RETURNS DATETIME
+AS
+BEGIN
+	DECLARE @CounterResetDate DATETIME;
+
+	SELECT @CounterResetDate = DATEADD(MINUTE, CASE WHEN ConfigValue < 1 THEN 1 ELSE ConfigValue END, @LogDate)
+	FROM Config
+	WHERE ConfigId = 1;
+
+	RETURN @CounterResetDate;
+END
+GO
+
+/*
 Create stored procedures.
 */
 
@@ -275,9 +329,10 @@ END
 GO
 
 /*
-  Called by OnFailedLogin.ps1, shouldn't be called by any other application.
+  Called by OnFailedLogin task, shouldn't be called by any other application.
 */
-CREATE PROCEDURE [dbo].[LogFailedLogin]
+
+CREATE PROCEDURE LogFailedLogin
 (
 	@EventID int,
 	@IPAddress VARCHAR(100),
@@ -289,6 +344,7 @@ BEGIN
 	SET NOCOUNT ON;
 	DECLARE @LogDate DATETIME = GETDATE();
 	DECLARE @FailedLoginThreshold INT;
+	DECLARE @CounterResetDate DATETIME;
 	DECLARE @FirewallGroup VARCHAR(100) = 'SQL Server Login Monitor'
 	DECLARE @FirewallRules TABLE
 	(
@@ -296,38 +352,21 @@ BEGIN
 		FirewallRule VARCHAR(255)
 	)
 	
-	IF @IPAddress = '<local machine>' -- Ignore login failures on local machine
-		RETURN;
-
-	IF NOT EXISTS (SELECT * FROM ConfigEvent
-	               WHERE EventID = @EventID
-									AND Block = 1)
-	BEGIN
-		RETURN;
-	END
-
-	IF EXISTS (SELECT * FROM ConfigMsgFilter -- Check event message against exclusions
-	           WHERE CHARINDEX(FilterText, @Message) > 0)
-	BEGIN
-		RETURN;
-	END
+	IF @IPAddress = '<local machine>' RETURN; -- Ignore login failures on local machine
+	IF NOT EXISTS (SELECT * FROM ConfigEvent WHERE EventID = @EventID AND Block = 1) RETURN; -- Check if event is being monitored
+	IF EXISTS (SELECT * FROM ConfigMsgFilter  WHERE CHARINDEX(FilterText, @Message) > 0) RETURN; -- Check event message against exclusions
 
 	IF @UserID = '' SET @UserID = NULL;
 
-	SELECT @FailedLoginThreshold = ConfigValue
-	FROM Config
-	WHERE ConfigID = 2;
+	SELECT @FailedLoginThreshold = dbo.GetLoginThreshold(@EventID, @IPAddress, @UserID, @Message);
+	SELECT @CounterResetDate = dbo.GetCounterResetDate(@IPAddress, @LogDate);
 
 	INSERT INTO EventLog(IPAddress, Action, EventDesc)
 	VALUES(@IPAddress, 'Login Failure', @Message);
 
 	MERGE INTO ClientStatus t USING
 	(
-		SELECT @IPAddress,
-		  @LogDate,
-			DATEADD(MINUTE, ConfigValue, @LogDate)
-		FROM Config
-		WHERE ConfigID = 1
+		VALUES(@IPAddress, @LogDate, @CounterResetDate)
 	)AS s(IPAddress, LogDate, CounterResetDate)
 	ON t.IPAddress = s.IPAddress
 	WHEN MATCHED THEN
@@ -363,6 +402,7 @@ BEGIN
 	WHERE IPAddress = @IPAddress
 		AND EXISTS (SELECT * FROM WhiteList w WHERE w.IPAddress = c.IPAddress)
 		AND FailedLogins >= @FailedLoginThreshold;
+
 	-- Return firewall group/rule to add to firewall
 	SELECT FirewallGroup, FirewallRule
 	FROM @FirewallRules;
@@ -370,7 +410,7 @@ END
 GO
 
 /*
-  Used by ClearBlockedClients.ps1 powershell script to remove firewall rules; shouldn't
+  Used by ClearBlockedClients task to remove firewall rules; shouldn't
 	be called by any other application otherwise firewall rules will become out of synch with
 	ClientStatus table.
 */
@@ -444,8 +484,8 @@ END
 GO
 
 /*
-Simple SP for unblocking a client by user ID; can be incorporated into an application
-utilizing a password reset functionality.
+Unblocks a client by user ID; can be incorporated into an application
+utilizing a password reset API.
 */
 CREATE PROCEDURE UnblockUser(@UserID VARCHAR(128))
 AS
@@ -461,9 +501,18 @@ GO
 /*
   Create role for access to unblock clients via BlockedClient/BlockedClientDtl tables
 */
-CREATE ROLE [UnblockUsers]
-GRANT EXECUTE ON [UnblockUser] TO [UnblockUsers]
-GRANT SELECT ON [BlockedClientDtl] TO [UnblockUsers]
-GRANT DELETE ON [BlockedClient] TO [UnblockUsers]
-GRANT SELECT ON [BlockedClient] TO [UnblockUsers]
+CREATE ROLE UnblockUsers
+GRANT EXECUTE ON UnblockUser TO UnblockUsers
+GRANT SELECT ON BlockedClientDtl TO UnblockUsers
+GRANT DELETE ON BlockedClient TO UnblockUsers
+GRANT SELECT ON BlockedClient TO UnblockUsers
+GO
+
+/*
+	Minimum permissions for user running task scheduler scripts
+*/
+CREATE ROLE LoginMonitorService
+GRANT EXECUTE ON LogFailedLogin TO LoginMonitorService
+GRANT EXECUTE ON ResetClients TO LoginMonitorService
+GRANT EXECUTE ON UpdateBlockedClient TO LoginMonitorService
 GO

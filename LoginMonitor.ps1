@@ -121,12 +121,9 @@ function Log-FailedLogin
         $Message
     )
 
-    $Command = New-Object System.Data.SQLClient.SQLCommand
+    $Command = [System.Data.SqlClient.SqlCommand]::new('EXEC dbo.LogFailedLogin @EventID, @IPAddress, @UserID, @Message', $Connection)
     try
     {
-        $Command.Connection = $Connection
-        $Command.CommandText = 'EXEC dbo.LogFailedLogin @EventID, @IPAddress, @UserID, @Message'
-
         $Command.Parameters.AddWithValue('@EventID', $EventID)
         $Command.Parameters.AddWithValue('@IPAddress', $IPAddress)
         $Command.Parameters.AddWithValue('@UserID', $UserID)
@@ -148,7 +145,6 @@ function Log-FailedLogin
         }
         finally
         {
-            $Reader.Close()
             $Reader.Dispose()
         }
         
@@ -178,12 +174,10 @@ function Update-BlockedClient
         [string]
         $FirewallRule
     )
-    $Command = New-Object System.Data.SQLClient.SQLCommand
+
+    $Command = [System.Data.SqlClient.SqlCommand]::new('EXEC UpdateBlockedClient @IPAddress, @FirewallRule', $Connection)
     try
     {
-        $Command.Connection = $Connection
-        $Command.CommandText = 'EXEC UpdateBlockedClient @IPAddress, @FirewallRule'
-
         [void]$Command.Parameters.AddWithValue('@IPAddress', $IPAddress)
         [void]$Command.Parameters.AddWithValue('@FirewallRule', $FirewallRule)
 
@@ -252,15 +246,12 @@ function Clear-BlockedClients
 {
     $ConnectionString = Get-DBConnectionString
 
-    $Connection = New-Object System.Data.SQLClient.SQLConnection
-    $Command = New-Object System.Data.SQLClient.SQLCommand
+    $Connection = [System.Data.SqlClient.SqlConnection]::new($ConnectionString)
+    $Command = [System.Data.SqlClient.SqlCommand]::new('EXEC dbo.ResetClients', $Connection)
 
     try
     {
-        $Connection.ConnectionString = $ConnectionString
         $Connection.Open()
-        $Command.Connection = $Connection
-        $Command.CommandText = 'EXEC dbo.ResetClients'
     
         # ResetClients deletes records in ClientStatus that need to be unblocked
         # or counters reset. Returns a result set of firewall rules to delete.
@@ -275,14 +266,12 @@ function Clear-BlockedClients
         }
         finally
         {
-            $Reader.Close()
             $Reader.Dispose()
         }
     }
     finally
     {
         $Command.Dispose()
-        $Connection.Close()
         $Connection.Dispose()
     }
 }
@@ -314,11 +303,10 @@ function On-FailedLogin
 
     $ConnectionString = Get-DBConnectionString
 
-    $Connection = New-Object System.Data.SQLClient.SQLConnection
+    $Connection = [System.Data.SQLClient.SQLConnection]::new($ConnectionString)
 
     try
     {
-        $Connection.ConnectionString = $ConnectionString
         $Connection.Open()
 
         $FirewallRule = (Log-FailedLogin $Connection $EventID $IPAddress $UserID $Message)[-1]
@@ -331,7 +319,6 @@ function On-FailedLogin
     }
     finally
     {
-        $Connection.Close()
         $Connection.Dispose()
     }
 }

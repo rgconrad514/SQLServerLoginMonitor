@@ -1,4 +1,4 @@
-﻿."$PSScriptRoot\SQL Server Login Monitor\LoginMonitor.ps1"
+﻿."$PSScriptRoot\LoginMonitor.ps1"
 Add-Type -AssemblyName PresentationFramework
 
 #Run as elevated
@@ -53,16 +53,12 @@ if($msgBoxInput -eq "Yes")
     $IPAddress = $IPConfig[0]
     $SubnetMask = $IPConfig[1]
 
-    $Connection = New-Object System.Data.SQLClient.SQLConnection
-    $Command = New-Object System.Data.SQLClient.SQLCommand
+    $Connection = [System.Data.SqlClient.SqlConnection]::new($ConnectionString)
+    $Command = [System.Data.SqlClient.SqlCommand]::new('EXEC dbo.WhitelistIP  @IPAddress, @Mask', $Connection)
 
     try
     {
-        $Connection.ConnectionString = $ConnectionString
         $Connection.Open()
-
-        $Command.Connection = $Connection
-        $Command.CommandText = 'EXEC dbo.WhitelistIP  @IPAddress, @Mask'
 
         $Command.Parameters.AddWithValue('@IPAddress', $IPAddress);
         $Command.Parameters.AddWithValue('@Mask', $SubnetMask)
@@ -72,7 +68,6 @@ if($msgBoxInput -eq "Yes")
     finally
     {
         $Command.Dispose()
-        $Connection.Close()
         $Connection.Dispose()
     }
 }

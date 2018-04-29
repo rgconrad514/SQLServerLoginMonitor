@@ -27,7 +27,7 @@ function Get-DBConnectionString
     return $ConnectionString
 }
 
-function Add-IPSecBlock
+function Add-BlockRule
 {
     [cmdletbinding()]
     param
@@ -42,12 +42,24 @@ function Add-IPSecBlock
         [string]
         $RuleGroup
     )
+    
+    $config = "$PSScriptRoot\config.xml"
+    $xml = [xml](Get-Content $config)
 
-    netsh ipsec static add filter filterlist=$RuleName srcaddr=$IPAddress dstaddr=me
-    netsh ipsec static add rule name=$RuleName policy=$RuleGroup filterlist=$RuleName filteraction=$RuleGroup
+    [int] $UseIPSec = $xml.SelectSingleNode("//UseIPSec[1]").FirstChild.Value
+    
+    if($UseIPSec -eq 1)
+    {
+        netsh ipsec static add filter filterlist=$RuleName srcaddr=$IPAddress dstaddr=me
+        netsh ipsec static add rule name=$RuleName policy=$RuleGroup filterlist=$RuleName filteraction=$RuleGroup
+    }
+    else
+    {
+        New-NetFirewallRule -Direction Inbound -DisplayName $RuleName -Name $RuleName -Group $RuleGroup -RemoteAddress $IPAddress -Action Block
+    }
 }
 
-function Delete-IPSecBlock
+function Delete-BlockRule
 {
     [cmdletbinding()]
     param
@@ -60,8 +72,20 @@ function Delete-IPSecBlock
         $RuleGroup
     )
 
-    netsh ipsec static delete rule name=$RuleName policy=$RuleGroup
-    netsh ipsec static delete filterlist name=$RuleName
+    $config = "$PSScriptRoot\config.xml"
+    $xml = [xml](Get-Content $config)
+
+    [int] $UseIPSec = $xml.SelectSingleNode("//UseIPSec[1]").FirstChild.Value
+
+    if($UseIPSec -eq 1)
+    {
+        netsh ipsec static delete rule name=$RuleName policy=$RuleGroup
+        netsh ipsec static delete filterlist name=$RuleName
+    }
+    else
+    {
+        Remove-NetFirewallRule -Name $RuleName
+    }
 }
 
 function Create-IPSecPolicy
@@ -189,7 +213,8 @@ function Log-FailedLogin
                 #SP will return a result if a firewall rule needs to be created.
                 $FirewallGroup = $Reader.GetString(0)
                 $FirewallRule = $Reader.GetString(1)
-                New-NetFirewallRule -Direction Inbound -DisplayName $FirewallRule -Name $FirewallRule -Group $FirewallGroup -RemoteAddress $IPAddress -Action Block
+
+                Add-BlockRule $IPAddress $FirewallRule $FirewallGroup
             }
         }
         finally
@@ -310,7 +335,7 @@ function Clear-BlockedClients
             while($Reader.Read())
             {
                 $FirewallRule = $Reader.GetString(0)
-                Remove-NetFirewallRule -Name $FirewallRule
+                Delete-BlockRule $FirewallRule 'SQL Server Login Monitor'
             }
         }
         finally

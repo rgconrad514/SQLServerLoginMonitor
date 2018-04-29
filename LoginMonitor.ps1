@@ -27,6 +27,55 @@ function Get-DBConnectionString
     return $ConnectionString
 }
 
+function Add-IPSecBlock
+{
+    [cmdletbinding()]
+    param
+    (
+        [parameter(position = 0, Mandatory=$true)]
+        [string]
+        $IPAddress,
+        [parameter(position = 1, Mandatory=$true)]
+        [string]
+        $RuleName,
+        [parameter(position = 2, Mandatory=$true)]
+        [string]
+        $RuleGroup
+    )
+
+    netsh ipsec static add filter filterlist=$RuleName srcaddr=$IPAddress dstaddr=me
+    netsh ipsec static add rule name=$RuleName policy=$RuleGroup filterlist=$RuleName filteraction=$RuleGroup
+}
+
+function Delete-IPSecBlock
+{
+    [cmdletbinding()]
+    param
+    (
+        [parameter(position = 0, Mandatory=$true)]
+        [string]
+        $RuleName,
+        [parameter(position = 1, Mandatory=$true)]
+        [string]
+        $RuleGroup
+    )
+
+    netsh ipsec static delete rule name=$RuleName policy=$RuleGroup
+    netsh ipsec static delete filterlist name=$RuleName
+}
+
+function Create-IPSecPolicy
+{
+    [cmdletbinding()]
+
+    $RuleGroup = 'SQL Server Login Monitor'
+    $Desc = 'SQL Server Login Monitor block list'
+
+    netsh ipsec static add filteraction name=$RuleGroup action=block
+    netsh ipsec static add policy name=$RuleGroup description=$Desc
+    netsh ipsec static set policy name=$RuleGroup assign=y
+}
+
 <#
     Used to extract event data passed from task scheduler to get user ID, error message and client IP address
 #>

@@ -1,4 +1,4 @@
-﻿<#
+<#
     Gets DB connection string parameters from config.xml
 #>
 function Get-DBConnectionString
@@ -25,79 +25,6 @@ function Get-DBConnectionString
         $ConnectionString = "server=$($Server);database=$($Database);user=$($User);password=$($Password);"   
     }
     return $ConnectionString
-}
-
-function Add-BlockRule
-{
-    [cmdletbinding()]
-    param
-    (
-        [parameter(position = 0, Mandatory=$true)]
-        [string]
-        $IPAddress,
-        [parameter(position = 1, Mandatory=$true)]
-        [string]
-        $RuleName,
-        [parameter(position = 2, Mandatory=$true)]
-        [string]
-        $RuleGroup
-    )
-    
-    $config = "$PSScriptRoot\config.xml"
-    $xml = [xml](Get-Content $config)
-
-    [int] $UseIPSec = $xml.SelectSingleNode("//UseIPSec[1]").FirstChild.Value
-    
-    if($UseIPSec -eq 1)
-    {
-        netsh ipsec static add filter filterlist=$RuleName srcaddr=$IPAddress dstaddr=me
-        netsh ipsec static add rule name=$RuleName policy=$RuleGroup filterlist=$RuleName filteraction=$RuleGroup
-    }
-    else
-    {
-        New-NetFirewallRule -Direction Inbound -DisplayName $RuleName -Name $RuleName -Group $RuleGroup -RemoteAddress $IPAddress -Action Block
-    }
-}
-
-function Delete-BlockRule
-{
-    [cmdletbinding()]
-    param
-    (
-        [parameter(position = 0, Mandatory=$true)]
-        [string]
-        $RuleName,
-        [parameter(position = 1, Mandatory=$true)]
-        [string]
-        $RuleGroup
-    )
-
-    $config = "$PSScriptRoot\config.xml"
-    $xml = [xml](Get-Content $config)
-
-    [int] $UseIPSec = $xml.SelectSingleNode("//UseIPSec[1]").FirstChild.Value
-
-    if($UseIPSec -eq 1)
-    {
-        netsh ipsec static delete rule name=$RuleName policy=$RuleGroup
-        netsh ipsec static delete filterlist name=$RuleName
-    }
-    else
-    {
-        Remove-NetFirewallRule -Name $RuleName
-    }
-}
-
-function Create-IPSecPolicy
-{
-    [cmdletbinding()]
-
-    $RuleGroup = 'SQL Server Login Monitor'
-    $Desc = 'SQL Server Login Monitor block list'
-
-    netsh ipsec static add filteraction name=$RuleGroup action=block
-    netsh ipsec static add policy name=$RuleGroup description=$Desc
-    netsh ipsec static set policy name=$RuleGroup assign=y
 }
 
 <#
@@ -213,8 +140,7 @@ function Log-FailedLogin
                 #SP will return a result if a firewall rule needs to be created.
                 $FirewallGroup = $Reader.GetString(0)
                 $FirewallRule = $Reader.GetString(1)
-
-                Add-BlockRule $IPAddress $FirewallRule $FirewallGroup
+                New-NetFirewallRule -Direction Inbound -DisplayName $FirewallRule -Name $FirewallRule -Group $FirewallGroup -RemoteAddress $IPAddress -Action Block
             }
         }
         finally
@@ -335,7 +261,7 @@ function Clear-BlockedClients
             while($Reader.Read())
             {
                 $FirewallRule = $Reader.GetString(0)
-                Delete-BlockRule $FirewallRule 'SQL Server Login Monitor'
+                Remove-NetFirewallRule -Name $FirewallRule
             }
         }
         finally

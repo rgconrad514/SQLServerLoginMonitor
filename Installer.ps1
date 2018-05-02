@@ -1,4 +1,4 @@
-﻿."$PSScriptRoot\LoginMonitor.ps1"
+."$PSScriptRoot\LoginMonitor.ps1"
 Add-Type -AssemblyName PresentationFramework
 
 #Run as elevated
@@ -13,13 +13,16 @@ if(-Not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdenti
 }
 Import-Module “sqlps” -DisableNameChecking
 
+#Enable Windows Firewall
+Set-NetFirewallProfile -Profile Domain,Public,Private -Enabled True
+
 #Remove any firewall rules from previous install
 Remove-NetFirewallRule -Group 'SQL Server Login Monitor'
 
 #Create folder in ProgramData and copy files
-New-Item -ItemType directory -Path "$env:ProgramData\SQL Server Login Monitor" -Force
-Copy-Item -Path $PSScriptRoot\LoginMonitor.ps1 -Destination "$env:ProgramData\SQL Server Login Monitor\" -Force
-Copy-Item -Path $PSScriptRoot\config.xml -Destination "$env:ProgramData\SQL Server Login Monitor\" -Force
+New-Item -ItemType directory -Path "$env:ProgramData\SQL Login Monitor" -Force
+Copy-Item -Path $PSScriptRoot\LoginMonitor.ps1 -Destination "$env:ProgramData\SQL Login Monitor\" -Force
+Copy-Item -Path $PSScriptRoot\config.xml -Destination "$env:ProgramData\SQL Login Monitor\" -Force
 
 #Get database credentials from config.xml file
 $config = "$env:ProgramData\SQL Server Login Monitor\config.xml"
@@ -28,7 +31,6 @@ $xml = [xml](Get-Content $config)
 
 $Server = $xml.SelectSingleNode("//Server[1]").FirstChild.Value
 $TrustedConnection = $xml.SelectSingleNode(“//TrustedConnection[1]”).FirstChild.Value
-[int] $UseIPSec = $xml.SelectSingleNode("//UseIPSec[1]").FirstChild.Value
 
 #Create database
 if($TrustedConnection -eq "true")
@@ -40,17 +42,6 @@ else
     $User = $xml.SelectSingleNode("//User[1]").FirstChild.Value
     $Password = $xml.SelectSingleNode("//Password[1]").FirstChild.Value
     Invoke-Sqlcmd -ServerInstance $Server -InputFile  $PSScriptRoot\LoginMonitor.sql -Username $User -Password $Password
-}
-
-#Create IPSec policy
-if($UseIPSec -eq 1)
-{
-    Create-IPSecPolicy
-}
-else
-{
-    #Enable Windows Firewall
-    Set-NetFirewallProfile -Profile Domain,Public,Private -Enabled True
 }
 
 $msgBoxInput = [System.Windows.MessageBox]::Show('Do you want to whitelist the LAN?','Whitelist LAN','YesNo','Information')
@@ -69,7 +60,7 @@ if($msgBoxInput -eq "Yes")
     {
         $Connection.Open()
 
-        $Command.Parameters.AddWithValue('@IPAddress', $IPAddress)
+        $Command.Parameters.AddWithValue('@IPAddress', $IPAddress);
         $Command.Parameters.AddWithValue('@Mask', $SubnetMask)
 
         $Command.ExecuteNonQuery()

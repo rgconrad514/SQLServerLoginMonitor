@@ -11,7 +11,7 @@ function Get-DBConnectionString
 
     $Server = $xml.SelectSingleNode("//Server[1]").FirstChild.Value
     $Database = $xml.SelectSingleNode("//Database[1]").FirstChild.Value
-    $TrustedConnection = $xml.SelectSingleNode(‚Äú//TrustedConnection[1]‚Äù).FirstChild.Value
+    $TrustedConnection = $xml.SelectSingleNode(ì//TrustedConnection[1]î).FirstChild.Value
 
     $ConnectionString = ''
     if($TrustedConnection -eq "true")
@@ -25,6 +25,79 @@ function Get-DBConnectionString
         $ConnectionString = "server=$($Server);database=$($Database);user=$($User);password=$($Password);"   
     }
     return $ConnectionString
+}
+
+function Add-BlockRule
+{
+    [cmdletbinding()]
+    param
+    (
+        [parameter(position = 0, Mandatory=$true)]
+        [string]
+        $IPAddress,
+        [parameter(position = 1, Mandatory=$true)]
+        [string]
+        $RuleName,
+        [parameter(position = 2, Mandatory=$true)]
+        [string]
+        $RuleGroup
+    )
+    
+    $config = "$PSScriptRoot\config.xml"
+    $xml = [xml](Get-Content $config)
+
+    [int] $UseIPSec = $xml.SelectSingleNode("//UseIPSec[1]").FirstChild.Value
+    
+    if($UseIPSec -eq 1)
+    {
+        netsh ipsec static add filter filterlist=$RuleName srcaddr=$IPAddress dstaddr=me
+        netsh ipsec static add rule name=$RuleName policy=$RuleGroup filterlist=$RuleName filteraction=$RuleGroup
+    }
+    else
+    {
+        netsh advfirewall firewall add rule name=$RuleName dir=in interface=any action=block remoteip=$IPAddress
+    }
+}
+
+function Delete-BlockRule
+{
+    [cmdletbinding()]
+    param
+    (
+        [parameter(position = 0, Mandatory=$true)]
+        [string]
+        $RuleName,
+        [parameter(position = 1, Mandatory=$true)]
+        [string]
+        $RuleGroup
+    )
+
+    $config = "$PSScriptRoot\config.xml"
+    $xml = [xml](Get-Content $config)
+
+    [int] $UseIPSec = $xml.SelectSingleNode("//UseIPSec[1]").FirstChild.Value
+
+    if($UseIPSec -eq 1)
+    {
+        netsh ipsec static delete rule name=$RuleName policy=$RuleGroup
+        netsh ipsec static delete filterlist name=$RuleName
+    }
+    else
+    {
+        $null = Remove-NetFirewallRule -Name $RuleName
+    }
+}
+
+function Create-IPSecPolicy
+{
+    [cmdletbinding()]
+
+    $RuleGroup = 'SQL Server Login Monitor'
+    $Desc = 'SQL Server Login Monitor block list'
+
+    netsh ipsec static add filteraction name=$RuleGroup action=block
+    netsh ipsec static add policy name=$RuleGroup description=$Desc
+    netsh ipsec static set policy name=$RuleGroup assign=y
 }
 
 <#
@@ -121,13 +194,15 @@ function Log-FailedLogin
         $Message
     )
 
-    $Command = [System.Data.SqlClient.SqlCommand]::new('EXEC dbo.LogFailedLogin @EventID, @IPAddress, @UserID, @Message', $Connection)
+    $Command = [System.Data.SqlClient.SqlCommand]::new('dbo.LogFailedLogin', $Connection)
+    $Command.CommandType = [System.Data.CommandType]::StoredProcedure
+
     try
     {
-        $Command.Parameters.AddWithValue('@EventID', $EventID)
-        $Command.Parameters.AddWithValue('@IPAddress', $IPAddress)
-        $Command.Parameters.AddWithValue('@UserID', $UserID)
-        $Command.Parameters.AddWithValue('@Message', $Message)
+        $null = $Command.Parameters.AddWithValue('@EventID', $EventID)
+        $null = $Command.Parameters.AddWithValue('@IPAddress', $IPAddress)
+        $null = $Command.Parameters.AddWithValue('@UserID', $UserID)
+        $null = $Command.Parameters.AddWithValue('@Message', $Message)
 
         $Reader = $Command.ExecuteReader([System.Data.CommandBehavior]::SingleRow)
 
@@ -140,7 +215,8 @@ function Log-FailedLogin
                 #SP will return a result if a firewall rule needs to be created.
                 $FirewallGroup = $Reader.GetString(0)
                 $FirewallRule = $Reader.GetString(1)
-                New-NetFirewallRule -Direction Inbound -DisplayName $FirewallRule -Name $FirewallRule -Group $FirewallGroup -RemoteAddress $IPAddress -Action Block
+
+                $null = Add-BlockRule $IPAddress $FirewallRule $FirewallGroup
             }
         }
         finally
@@ -175,7 +251,9 @@ function Update-BlockedClient
         $FirewallRule
     )
 
-    $Command = [System.Data.SqlClient.SqlCommand]::new('EXEC UpdateBlockedClient @IPAddress, @FirewallRule', $Connection)
+    $Command = [System.Data.SqlClient.SqlCommand]::new('UpdateBlockedClient', $Connection)
+    $Command.CommandType = [System.Data.CommandType]::StoredProcedure
+
     try
     {
         [void]$Command.Parameters.AddWithValue('@IPAddress', $IPAddress)
@@ -247,7 +325,8 @@ function Clear-BlockedClients
     $ConnectionString = Get-DBConnectionString
 
     $Connection = [System.Data.SqlClient.SqlConnection]::new($ConnectionString)
-    $Command = [System.Data.SqlClient.SqlCommand]::new('EXEC dbo.ResetClients', $Connection)
+    $Command = [System.Data.SqlClient.SqlCommand]::new('dbo.ResetClients', $Connection)
+    $Command.CommandType = [System.Data.CommandType]::StoredProcedure
 
     try
     {
@@ -261,7 +340,7 @@ function Clear-BlockedClients
             while($Reader.Read())
             {
                 $FirewallRule = $Reader.GetString(0)
-                Remove-NetFirewallRule -Name $FirewallRule
+                Delete-BlockRule $FirewallRule 'SQL Server Login Monitor'
             }
         }
         finally
@@ -274,6 +353,7 @@ function Clear-BlockedClients
         $Command.Dispose()
         $Connection.Dispose()
     }
+    Get-NetFirewallRule -DisplayName 'SQL Server Login Monitor*' | ForEach { $_.Group = 'SQL Server Login Monitor'; Set-NetFirewallRule -InputObject $_ }
 }
 <#
     Called by event-triggered task for login failures (event IDs 18456, 17828, 17832 and 17836)
@@ -309,7 +389,7 @@ function On-FailedLogin
     {
         $Connection.Open()
 
-        $FirewallRule = (Log-FailedLogin $Connection $EventID $IPAddress $UserID $Message)[-1]
+        $FirewallRule = Log-FailedLogin $Connection $EventID $IPAddress $UserID $Message
 
         if($FirewallRule -ne '')
         {

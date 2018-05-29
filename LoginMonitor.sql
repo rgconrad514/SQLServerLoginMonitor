@@ -516,3 +516,10 @@ GRANT EXECUTE ON LogFailedLogin TO LoginMonitorService
 GRANT EXECUTE ON ResetClients TO LoginMonitorService
 GRANT EXECUTE ON UpdateBlockedClient TO LoginMonitorService
 GO
+
+/*
+  Create user for NT AUTHORITY\SYSTEM account
+*/
+CREATE USER LoginMonitor FOR LOGIN [NT AUTHORITY\SYSTEM]
+ALTER ROLE LoginMonitorService ADD MEMBER LoginMonitor
+GO

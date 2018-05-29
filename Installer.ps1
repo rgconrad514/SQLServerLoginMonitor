@@ -11,18 +11,14 @@ if(-Not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdenti
         Exit
     }
 }
-Import-Module “sqlps” -DisableNameChecking
+#Import-Module "sqlps"� -DisableNameChecking
 
-#Enable Windows Firewall
-Set-NetFirewallProfile -Profile Domain,Public,Private -Enabled True
-
-#Remove any firewall rules from previous install
-Remove-NetFirewallRule -Group 'SQL Server Login Monitor'
+Import-Module "sqlps" -DisableNameChecking
 
 #Create folder in ProgramData and copy files
-New-Item -ItemType directory -Path "$env:ProgramData\SQL Login Monitor" -Force
-Copy-Item -Path $PSScriptRoot\LoginMonitor.ps1 -Destination "$env:ProgramData\SQL Login Monitor\" -Force
-Copy-Item -Path $PSScriptRoot\config.xml -Destination "$env:ProgramData\SQL Login Monitor\" -Force
+New-Item -ItemType directory -Path "$env:ProgramData\SQL Server Login Monitor" -Force
+Copy-Item -Path $PSScriptRoot\LoginMonitor.ps1 -Destination "$env:ProgramData\SQL Server Login Monitor\" -Force
+Copy-Item -Path $PSScriptRoot\config.xml -Destination "$env:ProgramData\SQL Server Login Monitor\" -Force
 
 #Get database credentials from config.xml file
 $config = "$env:ProgramData\SQL Server Login Monitor\config.xml"
@@ -30,7 +26,19 @@ $config = "$env:ProgramData\SQL Server Login Monitor\config.xml"
 $xml = [xml](Get-Content $config)
 
 $Server = $xml.SelectSingleNode("//Server[1]").FirstChild.Value
-$TrustedConnection = $xml.SelectSingleNode(“//TrustedConnection[1]”).FirstChild.Value
+$TrustedConnection = $xml.SelectSingleNode("//TrustedConnection[1]").FirstChild.Value
+[int] $UseIPSec = $xml.SelectSingleNode("//UseIPSec[1]").FirstChild.Value
+
+#Create IPSec policy
+if($UseIPSec -eq 1)
+{
+    Create-IPSecPolicy
+}
+else
+{
+    #Enable Windows Firewall
+    Set-NetFirewallProfile -Profile Domain,Public,Private -Enabled True
+}
 
 #Create database
 if($TrustedConnection -eq "true")
@@ -60,7 +68,7 @@ if($msgBoxInput -eq "Yes")
     {
         $Connection.Open()
 
-        $Command.Parameters.AddWithValue('@IPAddress', $IPAddress);
+        $Command.Parameters.AddWithValue('@IPAddress', $IPAddress)
         $Command.Parameters.AddWithValue('@Mask', $SubnetMask)
 
         $Command.ExecuteNonQuery()
@@ -72,15 +80,10 @@ if($msgBoxInput -eq "Yes")
     }
 }
 
-#Get credentials for running the scheduled tasks
-$msg = "Enter the username and password that will run scheduler tasks" 
-$credential = $Host.UI.PromptForCredential("User name and password", $msg, "$env:userdomain\$env:username", $env:userdomain)
-$username = $credential.UserName
-$password = $credential.GetNetworkCredential().Password
+#Create scheduled tasks and run with SYSTEM account
 
-#Create scheduled tasks
-Register-ScheduledTask -Xml (get-content "$PSScriptRoot\OnFailedLogin.xml" | out-string) -TaskName 'SQL Server Login Monitor - On Failed Login' -User $username -Password $password –Force
-Register-ScheduledTask -Xml (get-content "$PSScriptRoot\ClearBlockedClients.xml" | out-string) -TaskName 'SQL Server Login Monitor - Clear Blocked Clients' -User $username -Password $password –Force
+Register-ScheduledTask -Xml (get-content "$PSScriptRoot\OnFailedLogin.xml" | out-string) -TaskName 'SQL Server Login Monitor - On Failed Login' -User "NT AUTHORITY\SYSTEM" -Force
+Register-ScheduledTask -Xml (get-content "$PSScriptRoot\ClearBlockedClients.xml" | out-string) -TaskName 'SQL Server Login Monitor - Clear Blocked Clients' -User "NT AUTHORITY\SYSTEM" -Force
 
 Write-Host -NoNewLine "Tasks registered, press any key to continue..."
 

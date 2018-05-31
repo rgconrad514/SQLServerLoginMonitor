@@ -55,7 +55,12 @@ function Add-BlockRule
     }
     else
     {
+        #From testing it appears this is the fastest method for creating the firewall rule so the client is blocked
+        #as quickly as possible. The rule is first created using netsh, but because netsh does not allow for specifying
+        #the firewall group, the rule is retreived via COM after creation to set the group (just to keep the rules organized
+        #in the windows firewall UI).
         netsh advfirewall firewall add rule name=$RuleName dir=in interface=any action=block remoteip=$IPAddress
+        Get-NetFirewallRule -DisplayName $RuleName | ForEach { $_.Group = $RuleGroup; Set-NetFirewallRule -InputObject $_ }
     }
 }
 
@@ -353,7 +358,6 @@ function Clear-BlockedClients
         $Command.Dispose()
         $Connection.Dispose()
     }
-    Get-NetFirewallRule -DisplayName 'SQL Server Login Monitor*' | ForEach { $_.Group = 'SQL Server Login Monitor'; Set-NetFirewallRule -InputObject $_ }
 }
 <#
     Called by event-triggered task for login failures (event IDs 18456, 17828, 17832 and 17836)

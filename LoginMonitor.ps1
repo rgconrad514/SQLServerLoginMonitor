@@ -89,7 +89,7 @@ function Delete-BlockRule
     }
     else
     {
-        $null = Remove-NetFirewallRule -Name $RuleName
+        netsh advfirewall firewall delete rule name=$RuleName dir=in
     }
 }
 

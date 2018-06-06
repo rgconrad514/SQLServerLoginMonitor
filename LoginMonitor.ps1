@@ -10,20 +10,9 @@ function Get-DBConnectionString
     $xml = [xml](Get-Content $config)
 
     $Server = $xml.SelectSingleNode("//Server[1]").FirstChild.Value
-    $Database = $xml.SelectSingleNode("//Database[1]").FirstChild.Value
-    $TrustedConnection = $xml.SelectSingleNode(“//TrustedConnection[1]”).FirstChild.Value
 
-    $ConnectionString = ''
-    if($TrustedConnection -eq "true")
-    {
-        $ConnectionString = "server=$($Server);database=$($Database);trusted_connection=$($TrustedConnection);"
-    }
-    else
-    {
-        $User = $xml.SelectSingleNode("//User[1]").FirstChild.Value
-        $Password = $xml.SelectSingleNode("//Password[1]").FirstChild.Value
-        $ConnectionString = "server=$($Server);database=$($Database);user=$($User);password=$($Password);"   
-    }
+    $ConnectionString = "server=$($Server);database=LoginMonitor;trusted_connection=true;"
+
     return $ConnectionString
 }
 
@@ -50,15 +39,22 @@ function Add-BlockRule
     
     if($UseIPSec -eq 1)
     {
+        # A filter list is created for each IP because netsh apparently has a bug when running a command to delete
+        # an IP address from an existing list, e.g.:
+        #   netsh ipsec static delete filter filterlist="SQL Server Login Monitor" srcaddr=123.123.123.123 dstaddr=any
+        # always returns ERR IPsec[05050] : Filter with the specified spec does not exist in FilterList with name 'SQL Server Login Monitor'.
+        # This apparently worked in previous versions of Windows, it doesn't work in Windows Server 2016/Windows 10 that I use for testing.
+        # Therefore creating a filter list for each IP is the only way around this. From testing this doesn't appear to affect performance
+        # when the number of blocked IPs approaches ~1000. I haven't tested it beyond this.
         netsh ipsec static add filter filterlist=$RuleName srcaddr=$IPAddress dstaddr=me
         netsh ipsec static add rule name=$RuleName policy=$RuleGroup filterlist=$RuleName filteraction=$RuleGroup
     }
     else
     {
-        #From testing it appears this is the fastest method for creating the firewall rule so the client is blocked
-        #as quickly as possible. The rule is first created using netsh, but because netsh does not allow for specifying
-        #the firewall group, the rule is retreived via COM after creation to set the group (just to keep the rules organized
-        #in the windows firewall UI).
+        # From testing it appears this is the fastest method for creating the firewall rule so the client is blocked
+        # as quickly as possible. The rule is first created using netsh, but because netsh does not allow for specifying
+        # the firewall group, the rule is retreived via COM after creation to set the group (just to keep the rules organized
+        # in the windows firewall UI).
         netsh advfirewall firewall add rule name=$RuleName dir=in interface=any action=block remoteip=$IPAddress
         Get-NetFirewallRule -DisplayName $RuleName | ForEach { $_.Group = $RuleGroup; Set-NetFirewallRule -InputObject $_ }
     }

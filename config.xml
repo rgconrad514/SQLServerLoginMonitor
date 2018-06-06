@@ -1,8 +1,4 @@
 <LoginMonitor>
   <Server>localhost</Server>
-  <Database>LoginMonitor</Database>
-  <TrustedConnection>true</TrustedConnection>
-  <User></User>
-  <Password></Password>
   <UseIPSec>0</UseIPSec>
 </LoginMonitor>

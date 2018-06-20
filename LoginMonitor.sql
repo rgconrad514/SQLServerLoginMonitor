@@ -573,6 +573,7 @@ CREATE ROLE LoginMonitorService
 GRANT EXECUTE ON LogFailedLogin TO LoginMonitorService
 GRANT EXECUTE ON ResetClients TO LoginMonitorService
 GRANT EXECUTE ON UpdateBlockedClient TO LoginMonitorService
+GRANT EXECUTE ON InsertGeoIP TO LoginMonitorService
 GO
 
 /*

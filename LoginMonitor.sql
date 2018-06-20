@@ -88,6 +88,20 @@ CREATE TABLE Whitelist
 	IPAddress VARCHAR(100) NOT NULL PRIMARY KEY,
 	Description VARCHAR(255)
 );
+
+CREATE TABLE GeoIP
+(
+	IPAddress VARCHAR(100) NOT NULL PRIMARY KEY,
+	Host VARCHAR(512),
+	ISP VARCHAR(512),
+	City VARCHAR(255),
+	CountryCode VARCHAR(2),
+	CountryName VARCHAR(100),
+	Latitude FLOAT,
+	Longitude FLOAT,
+	LastUpdate DATETIME DEFAULT GETDATE()
+);
+
 GO
 
 CREATE VIEW BlockedClient
@@ -495,6 +509,50 @@ BEGIN
 	WHERE IPAddress IN (SELECT IPAddress
 	                    FROM BlockedClientDtl
 											WHERE UserID = @UserID);
+END
+GO
+
+CREATE PROCEDURE InsertGeoIP
+(
+  @IPAddress VARCHAR(100),
+	@Host VARCHAR(512),
+	@ISP VARCHAR(512),
+	@City VARCHAR(255),
+	@CountryCode VARCHAR(2),
+	@CountryName VARCHAR(100),
+	@Latitude FLOAT,
+	@Longitude FLOAT
+)
+AS
+BEGIN
+	SET NOCOUNT ON;
+	MERGE INTO GeoIP AS t USING
+	(
+		VALUES(@IPAddress, @Host, @ISP, @City, @CountryCode, @CountryName, @Latitude, @Longitude)
+	)s(IPAddress, Host, ISP, City, CountryCode, CountryName, Latitude, Longitude)
+	ON t.IPAddress = s.IPAddress
+	WHEN NOT MATCHED THEN
+	  INSERT(IPAddress, Host, ISP, City, CountryCode, CountryName, Latitude, Longitude)
+		VALUES(s.IPAddress, s.Host, s.ISP, s.City, s.CountryCode, s.CountryName, s.Latitude, s.Longitude)
+	WHEN MATCHED
+	  AND (
+			COALESCE(s.Host, '') <> COALESCE(t.host, '')
+			OR COALESCE(s.ISP, '') <> COALESCE(t.ISP, '')
+			OR COALESCE(s.City, '') <> COALESCE(t.City, '')
+			OR COALESCE(s.CountryCode, '') <> COALESCE(t.CountryCode, '')
+			OR COALESCE(s.CountryName, '') <> COALESCE(t.CountryName, '')
+			OR COALESCE(s.Latitude, 0) <> COALESCE(t.Latitude, 0)
+			OR COALESCE(s.Longitude, 0) <> COALESCE(t.Longitude, 0)
+			)
+	THEN
+	  UPDATE SET t.Host = s.Host,
+		  t.ISP = s.ISP,
+			t.City = s.City,
+			t.CountryCode = s.CountryCode,
+			t.CountryName = s.CountryName,
+			t.Latitude = s.Latitude,
+			t.Longitude = s.Longitude,
+			t.LastUpdate = GETDATE();
 END
 GO
 

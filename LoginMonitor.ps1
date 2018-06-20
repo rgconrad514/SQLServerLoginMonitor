@@ -16,6 +16,64 @@ function Get-DBConnectionString
     return $ConnectionString
 }
 
+function Log-GeoIP
+{
+    [cmdletbinding()]
+    Param
+    (
+        [parameter(position = 0, Mandatory=$true)]
+        [System.Data.SQLClient.SQLConnection]
+        $Connection,
+        [parameter(position = 1, Mandatory=$true)]
+        [string]
+        $IPAddress
+    )
+
+    $url = "http://api.geoiplookup.net/?query=" + $IPAddress
+    $http_Request = [System.Net.WebClient]::new()
+    try
+    {
+        [xml] $Result = $http_Request.DownloadString($url)
+
+        $Hst = $Result.ip.results.result.host
+        $ISP = $Result.ip.results.result.isp
+        $City = $Result.ip.results.result.city
+        $CountryCode = $Result.ip.results.result.countrycode
+        $CountryName = $Result.ip.results.result.countryname
+        $Latitude = $Result.ip.results.result.latitude
+        $Longitude = $Result.ip.results.result.longitude
+
+        $Command = [System.Data.SqlClient.SqlCommand]::new('dbo.InsertGeoIP', $Connection)
+        $Command.CommandType = [System.Data.CommandType]::StoredProcedure
+
+        try
+        {
+            $null = $Command.Parameters.AddWithValue('@IPAddress', $IPAddress)
+            $null = $Command.Parameters.AddWithValue('@Host', $Hst)
+            $null = $Command.Parameters.AddWithValue('@ISP', $ISP)
+            $null = $Command.Parameters.AddWithValue('@City', $City)
+            $null = $Command.Parameters.AddWithValue('@CountryCode', $CountryCode)
+            $null = $Command.Parameters.AddWithValue('@CountryName', $CountryName)
+            $null = $Command.Parameters.AddWithValue('@Latitude', $Latitude)
+            $null = $Command.Parameters.AddWithValue('@Longitude', $Longitude)
+
+            $Command.ExecuteNonQuery()
+        }
+        finally
+        {
+            $Command.Dispose()
+        }
+    }
+    catch
+    {
+        return
+    }
+    finally
+    {
+        $http_Request.Dispose()
+    }
+}
+
 function Add-BlockRule
 {
     [cmdletbinding()]
@@ -396,6 +454,8 @@ function On-FailedLogin
             #Firewall rule was created so the record is updated in ClientStatus
             Update-BlockedClient $Connection $IPAddress $FirewallRule
         }
+
+        Log-GeoIP $Connection $IPAddress
     }
     finally
     {

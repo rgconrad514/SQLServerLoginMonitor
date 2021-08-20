@@ -1,3 +1,6 @@
+#Note
+This is for demonstration purposes only. Opening an MSSQL Server port to the internet is unnecessary and inherently insecure. Some rarely encountered legacy software may require it, in which case this code might be useful. Other than that, this code is intended for educational or testing purposes only.
+
 # SQL Server Login Monitor
 Brute force attack prevention for remotely accessible SQL Server databases using PowerShell and Windows Task Scheduler API.
 More details in this article: https://www.codeproject.com/Articles/1240243/SQL-Server-Brute-Force-Attack-Detection-Part

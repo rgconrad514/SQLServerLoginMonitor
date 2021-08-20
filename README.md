@@ -1,4 +1,4 @@
-#Note
+# Note
 This is for demonstration purposes only. Opening an MSSQL Server port to the internet is unnecessary and inherently insecure. Some rarely encountered legacy software may require it, in which case this code might be useful. Other than that, this code is intended for educational or testing purposes only.
 
 # SQL Server Login Monitor
